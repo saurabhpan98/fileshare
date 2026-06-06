@@ -31,10 +31,8 @@ export default defineConfig({
           },
         ],
       },
-      manifest: false, // We provide our own manifest.json
-      devOptions: {
-        enabled: true,
-      },
+      manifest: false,
+      devOptions: { enabled: true },
     }),
   ],
   server: { host: true, port: 5173 },
