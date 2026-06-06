@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e40af"/>
+      <stop offset="50%" style="stop-color:#0891b2"/>
+      <stop offset="100%" style="stop-color:#0d9488"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:rgba(255,255,255,0.25)"/>
+      <stop offset="100%" style="stop-color:rgba(255,255,255,0)"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <!-- Background -->
+  <rect width="512" height="512" rx="92" ry="92" fill="url(#bgGrad)"/>
+  <rect width="512" height="512" rx="92" ry="92" fill="url(#shine)"/>
+  <!-- Border -->
+  <rect x="4" y="4" width="504" height="504" rx="88" ry="88" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="2"/>
+  
+  <!-- WiFi arcs -->
+  <g filter="url(#glow)" stroke="white" stroke-width="18" fill="none" stroke-linecap="round">
+    <path d="M 196 220 A 80 80 0 0 1 316 220"/>
+    <path d="M 156 190 A 130 130 0 0 1 356 190"/>
+    <path d="M 116 160 A 180 180 0 0 1 396 160"/>
+  </g>
+  <!-- Center dot -->
+  <circle cx="256" cy="220" r="22" fill="white" filter="url(#glow)"/>
+  
+  <!-- Bidirectional arrows -->
+  <g stroke="white" stroke-width="14" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)">
+    <!-- Up arrow -->
+    <line x1="256" y1="360" x2="256" y2="300"/>
+    <polyline points="220,328 256,292 292,328"/>
+    <!-- Down arrow -->
+    <line x1="256" y1="400" x2="256" y2="450"/>
+    <polyline points="220,432 256,458 292,432"/>
+  </g>
+</svg>
