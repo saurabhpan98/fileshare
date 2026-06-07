@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { PeerManager } from './peerManager';
+import { PeerConnection, generatePin } from './peerManager';
 import { QRCodeSVG } from 'qrcode.react';
 
+/* ═══ Icons ═══ */
 const I = {
   Send: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
   Download: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
@@ -11,14 +12,16 @@ const I = {
   Upload: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
   Wifi: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>,
   Shield: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
-  PhonePc: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="12" height="16" rx="2"/><line x1="18" y1="8" x2="22" y2="8"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="18" y1="16" x2="22" y2="16"/><rect x="16" y="18" width="8" height="4" rx="1"/></svg>,
+  Zap: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
   File: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>,
   Trash: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>,
   ArrowLeft: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>,
-  Link: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>,
-  Zap: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+  Camera: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>,
+  Key: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>,
+  CopyPin: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
 };
 
+/* ═══ Helpers ═══ */
 function fmtSize(b) {
   if (b === 0) return '0 B';
   const k = 1024, s = ['B', 'KB', 'MB', 'GB'];
@@ -27,81 +30,151 @@ function fmtSize(b) {
 }
 
 function copyText(text) {
-  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
-  const ta = document.createElement('textarea');
-  ta.value = text; document.body.appendChild(ta);
-  ta.select(); document.execCommand('copy');
-  document.body.removeChild(ta);
-  return Promise.resolve();
+  return navigator.clipboard?.writeText(text) || Promise.resolve();
 }
+
+/* ═══ Small UI Components ═══ */
 
 const StatusBadge = ({ state }) => {
   const c = {
-    disconnected: { l: 'Disconnected', bg: 'bg-gray-500/20', t: 'text-gray-400', border: 'border-gray-500/30' },
-    'offer-ready': { l: 'Offer Ready', bg: 'bg-amber-500/20', t: 'text-amber-400', border: 'border-amber-500/30' },
-    'answer-ready': { l: 'Answer Ready', bg: 'bg-amber-500/20', t: 'text-amber-400', border: 'border-amber-500/30' },
-    connecting: { l: 'Connecting...', bg: 'bg-blue-500/20', t: 'text-blue-400', border: 'border-blue-500/30' },
-    connected: { l: 'Connected', bg: 'bg-green-500/20', t: 'text-green-400', border: 'border-green-500/30' },
-    error: { l: 'Error', bg: 'bg-red-500/20', t: 'text-red-400', border: 'border-red-500/30' },
+    disconnected: { l: 'Disconnected', dot: 'bg-gray-400', bg: 'bg-gray-500/20', t: 'text-gray-400', border: 'border-gray-500/30' },
+    creating: { l: 'Creating session...', dot: 'bg-blue-400 animate-pulse', bg: 'bg-blue-500/20', t: 'text-blue-400', border: 'border-blue-500/30' },
+    waiting: { l: 'Waiting for receiver', dot: 'bg-amber-400 animate-pulse', bg: 'bg-amber-500/20', t: 'text-amber-400', border: 'border-amber-500/30' },
+    connecting: { l: 'Connecting...', dot: 'bg-blue-400 animate-pulse', bg: 'bg-blue-500/20', t: 'text-blue-400', border: 'border-blue-500/30' },
+    connected: { l: 'Connected', dot: 'bg-green-400 animate-pulse', bg: 'bg-green-500/20', t: 'text-green-400', border: 'border-green-500/30' },
+    error: { l: 'Error', dot: 'bg-red-400', bg: 'bg-red-500/20', t: 'text-red-400', border: 'border-red-500/30' },
   };
-  const { l, bg, t, border } = c[state] || c.disconnected;
-  const dot = state === 'connected' ? 'bg-green-400 animate-pulse' : state === 'connecting' ? 'bg-blue-400 animate-pulse' : state === 'error' ? 'bg-red-400' : 'bg-gray-400';
+  const { l, dot, bg, t, border } = c[state] || c.disconnected;
   return (<span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${bg} ${t} ${border}`}><span className={`w-2 h-2 rounded-full ${dot}`} />{l}</span>);
 };
 
 const PBar = ({ progress, color = 'blue' }) => {
-  const g = color === 'green' ? 'from-green-500 to-emerald-400' : color === 'red' ? 'from-red-500 to-pink-400' : 'from-blue-500 to-cyan-400';
+  const g = color === 'green' ? 'from-green-500 to-emerald-400' : 'from-blue-500 to-cyan-400';
   return (<div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden"><div className={`h-full bg-gradient-to-r ${g} rounded-full transition-all duration-300`} style={{ width: `${Math.min(progress, 100)}%` }} /></div>);
 };
 
-const CopyBlock = ({ label, text }) => {
-  const [done, setDone] = useState(false);
-  const handleCopy = () => { copyText(text); setDone(true); setTimeout(() => setDone(false), 2000); };
-  return (<div className="flex items-center gap-3 bg-white/5 rounded-xl p-3 border border-white/10">
-    <div className="flex-1 min-w-0"><p className="text-[11px] text-white/40 uppercase tracking-wider mb-0.5">{label}</p><p className="text-xs font-mono text-cyan-300 break-all">{text?.substring?.(0, 60) || ''}...</p></div>
-    <button onClick={handleCopy} className={`p-2 rounded-lg transition-all shrink-0 ${done ? 'bg-green-500/20 text-green-400' : 'bg-white/10 text-white/60 hover:text-white hover:bg-white/15'}`}>{done ? <I.Check /> : <I.Copy />}</button>
-  </div>);
-};
-
-const QRBox = ({ data }) => (<div className="flex flex-col items-center gap-4 p-6 bg-white/5 rounded-2xl border border-white/10 animate-bounce-in">
-  <div className="bg-white p-3 rounded-xl shadow-lg"><QRCodeSVG value={data} size={180} level="M" bgColor="#ffffff" fgColor="#0f172a" /></div>
-  <p className="text-xs text-white/40">Scan with the other device</p>
-</div>);
+const QRBox = ({ data, label }) => (
+  <div className="flex flex-col items-center gap-4 p-6 bg-white/5 rounded-2xl border border-white/10 animate-bounce-in">
+    <div className="bg-white p-3 rounded-xl shadow-lg">
+      <QRCodeSVG value={data} size={200} level="M" bgColor="#ffffff" fgColor="#0f172a" />
+    </div>
+    {label && <p className="text-xs text-white/40">{label}</p>}
+  </div>
+);
 
 const PWAInstallBanner = ({ prompt, onInstall, onDismiss }) => {
   if (!prompt) return null;
   return (<div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:max-w-sm z-50 animate-slide-up">
     <div className="glass p-4 flex items-center gap-3 shadow-2xl">
       <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-xl flex items-center justify-center shrink-0"><I.Download className="text-white w-5 h-5" /></div>
-      <div className="flex-1 min-w-0"><p className="text-sm font-semibold text-white">Install FileSync</p><p className="text-xs text-white/50">Add to your home screen for quick access</p></div>
-      <div className="flex gap-2 shrink-0">
-        <button onClick={onDismiss} className="p-2 text-white/40 hover:text-white/70 transition-colors"><I.X className="w-4 h-4" /></button>
-        <button onClick={onInstall} className="btn-primary text-xs py-2 px-4">Install</button>
-      </div>
+      <div className="flex-1 min-w-0"><p className="text-sm font-semibold">Install FileSync</p><p className="text-xs text-white/50">Add to home screen</p></div>
+      <button onClick={onDismiss} className="p-2 text-white/40"><I.X className="w-4 h-4" /></button>
+      <button onClick={onInstall} className="btn-primary text-xs py-2 px-4">Install</button>
     </div>
   </div>);
 };
 
+/* ═══ PIN Display (big digits) ═══ */
+const PinDisplay = ({ pin }) => (
+  <div className="flex gap-3 justify-center my-4">
+    {pin.split('').map((d, i) => (
+      <div key={i} className="w-12 h-16 sm:w-14 sm:h-20 bg-gradient-to-b from-blue-500/20 to-cyan-500/20 border border-blue-500/30 rounded-xl flex items-center justify-center text-2xl sm:text-3xl font-bold text-white font-mono">
+        {d}
+      </div>
+    ))}
+  </div>
+);
+
+/* ═══ PIN Input (6-digit) ═══ */
+const PinInput = ({ value, onChange, onSubmit, disabled, error }) => {
+  const refs = useRef([]);
+
+  const handleChange = (i, e) => {
+    const val = e.target.value.replace(/[^0-9]/g, '');
+    if (!val) return;
+    const digits = val.split('');
+    const newVals = value.split('');
+    // Distribute entered digits
+    digits.forEach((d, di) => { if (i + di < 6) newVals[i + di] = d; });
+    const result = newVals.join('');
+    onChange(result);
+    // Auto-focus next
+    const nextIdx = Math.min(i + digits.length, 5);
+    if (digits.length === 1 && nextIdx < 5 && refs.current[nextIdx]) {
+      refs.current[nextIdx].focus();
+    }
+  };
+
+  const handleKeyDown = (i, e) => {
+    if (e.key === 'Backspace' && !value[i] && i > 0 && refs.current[i - 1]) {
+      refs.current[i - 1].focus();
+      const newVals = value.split('');
+      newVals[i - 1] = '';
+      onChange(newVals.join(''));
+    }
+    if (e.key === 'Enter' && value.length === 6 && onSubmit) onSubmit();
+  };
+
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const pasted = (e.clipboardData?.getData('text') || '').replace(/[^0-9]/g, '').slice(0, 6);
+    onChange(pasted);
+    if (pasted.length === 6 && refs.current[5]) refs.current[5].focus();
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 justify-center">
+        {[0,1,2,3,4,5].map(i => (
+          <input
+            key={i}
+            ref={el => refs.current[i] = el}
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            value={value[i] || ''}
+            onChange={(e) => handleChange(i, e)}
+            onKeyDown={(e) => handleKeyDown(i, e)}
+            onPaste={handlePaste}
+            className="w-12 h-14 sm:w-14 sm:h-16 bg-white/10 border border-white/20 rounded-xl text-center text-2xl font-bold font-mono text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+            disabled={disabled}
+          />
+        ))}
+      </div>
+      {error && <p className="text-center text-sm text-red-400">{error}</p>}
+      <button onClick={onSubmit} disabled={disabled || value.length !== 6} className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed">
+        <span className="flex items-center justify-center gap-2"><I.Key /> Connect</span>
+      </button>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════
+   MAIN APP
+   ═══════════════════════════════════════════════ */
 export default function App() {
-  const [step, setStep] = useState('home');
-  const [peerState, setPeerState] = useState('disconnected');
-  const [offerCode, setOfferCode] = useState('');
-  const [answerCode, setAnswerCode] = useState('');
-  const [inputVal, setInputVal] = useState('');
+  const [step, setStep] = useState('home'); // home | sender | receiver | connected
+  const [role, setRole] = useState('');     // sender | receiver
+  const [connState, setConnState] = useState('disconnected');
+  const [pin, setPin] = useState('');
+  const [inputPin, setInputPin] = useState('');
+  const [error, setError] = useState('');
+  const [toast, setToast] = useState(null);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [transfers, setTransfers] = useState({});
   const [receivedFiles, setReceivedFiles] = useState([]);
-  const [showTab, setShowTab] = useState('send');
-  const [toast, setToast] = useState(null);
   const [installPrompt, setInstallPrompt] = useState(null);
-  const peerRef = useRef(null);
+  const [copiedPin, setCopiedPin] = useState(false);
+
+  const connRef = useRef(null);
   const fileRef = useRef(null);
   const tidRef = useRef(0);
 
+  /* ─── PWA Install ─── */
   useEffect(() => {
-    const handler = (e) => { e.preventDefault(); setInstallPrompt(e); };
-    window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+    const h = (e) => { e.preventDefault(); setInstallPrompt(e); };
+    window.addEventListener('beforeinstallprompt', h);
+    return () => window.removeEventListener('beforeinstallprompt', h);
   }, []);
 
   const doInstall = () => {
@@ -112,56 +185,99 @@ export default function App() {
 
   const toast_ = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
 
-  const initPeer = useCallback(() => {
-    if (peerRef.current) peerRef.current.disconnect();
-    const pm = new PeerManager(
-      (s) => { setPeerState(s); if (s === 'connected') { setStep('connected'); toast_('Connected! Ready to transfer.'); } if (s === 'error') toast_('Connection failed'); },
-      (file) => { const id = ++tidRef.current; setReceivedFiles(p => [{ id, name: file.name, size: file.size, type: file.type, blob: file, ts: Date.now() }, ...p]); toast_('Received: ' + file.name); },
-      (fileId, { progress, status }) => { setTransfers(p => ({ ...p, [fileId]: { ...(p[fileId] || {}), progress, status } })); }
+  const hideSplash = () => {
+    const el = document.getElementById('splash');
+    if (!el) return;
+    el.classList.add('fade-out');
+    setTimeout(() => el.classList.add('hidden'), 600);
+  };
+
+  useEffect(() => { requestAnimationFrame(() => hideSplash()); }, []);
+
+  /* ─── Start as SENDER: generate PIN ─── */
+  const startSender = useCallback(async () => {
+    const newPin = generatePin();
+    setPin(newPin);
+    setRole('sender');
+    setStep('sender');
+    setConnState('creating');
+    setError('');
+
+    const pc = new PeerConnection(
+      (s) => { setConnState(s); if (s === 'connected') toast_('Connected! You can send files now.'); if (s === 'error') { toast_('Connection lost'); setConnState('disconnected'); } },
+      (file) => {
+        const id = ++tidRef.current;
+        setReceivedFiles(p => [{ id, name: file.name, size: file.size, type: file.type, blob: file, ts: Date.now() }, ...p]);
+        toast_('Received: ' + file.name);
+      },
+      (fid, { progress, status }) => {
+        setTransfers(p => ({ ...p, [fid]: { ...(p[fid] || {}), progress, status } }));
+      }
     );
-    peerRef.current = pm; return pm;
+    connRef.current = pc;
+
+    try {
+      await pc.startSender(newPin);
+    } catch (err) {
+      setError(err.message || 'Failed');
+      setConnState('disconnected');
+    }
   }, []);
 
-  const doCreateOffer = async () => {
-    const pm = initPeer();
-    try { const code = await pm.createOffer(); setOfferCode(code); setStep('send-offer'); } catch { toast_('Failed to create offer'); }
-  };
+  /* ─── Start as RECEIVER: enter PIN ─── */
+  const connectAsReceiver = useCallback(async () => {
+    if (inputPin.length !== 6) return;
+    setRole('receiver');
+    setStep('receiver');
+    setConnState('connecting');
+    setError('');
 
-  const doCreateAnswer = async () => {
-    if (!inputVal.trim()) return;
-    const pm = initPeer();
-    try { const code = await pm.createAnswer(inputVal.trim()); setAnswerCode(code); setStep('send-input'); } catch { toast_('Invalid offer code'); }
-  };
+    const pc = new PeerConnection(
+      (s) => { setConnState(s); if (s === 'connected') toast_('Connected! You can receive files now.'); if (s === 'error') { toast_('Connection lost'); setConnState('disconnected'); } },
+      (file) => {
+        const id = ++tidRef.current;
+        setReceivedFiles(p => [{ id, name: file.name, size: file.size, type: file.type, blob: file, ts: Date.now() }, ...p]);
+        toast_('Received: ' + file.name);
+      },
+      (fid, { progress, status }) => {
+        setTransfers(p => ({ ...p, [fid]: { ...(p[fid] || {}), progress, status } }));
+      }
+    );
+    connRef.current = pc;
 
-  const doAcceptAnswer = async () => {
-    if (!inputVal.trim()) return;
-    const pm = peerRef.current; if (!pm) return;
-    try { await pm.acceptAnswer(inputVal.trim()); toast_('Connecting...'); } catch { toast_('Failed to connect'); }
-  };
+    try {
+      await pc.startReceiver(inputPin);
+    } catch (err) {
+      setError(err.message || 'Failed to connect');
+      setConnState('disconnected');
+    }
+  }, [inputPin]);
 
-  const doSendFiles = async () => {
-    const pm = peerRef.current; if (!pm || selectedFiles.length === 0) return;
+  /* ─── Send files ─── */
+  const sendFiles = async () => {
+    const pc = connRef.current;
+    if (!pc || selectedFiles.length === 0) return;
     for (const f of selectedFiles) {
       const id = ++tidRef.current;
       setTransfers(p => ({ ...p, [id]: { name: f.name, size: f.size, progress: 0, status: 'sending' } }));
-      try { await pm.sendFiles([f]); } catch { setTransfers(p => ({ ...p, [id]: { ...(p[id] || {}), status: 'error' } })); }
+      try { await pc.sendFiles([f]); }
+      catch { setTransfers(p => ({ ...p, [id]: { ...(p[id] || {}), status: 'error' } })); }
     }
   };
 
-  const doDownload = (rf) => {
+  const downloadFile = (rf) => {
     const url = URL.createObjectURL(rf.blob);
     const a = document.createElement('a'); a.href = url; a.download = rf.name;
     document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
   };
 
-  const doReset = () => {
-    if (peerRef.current) { peerRef.current.disconnect(); peerRef.current = null; }
-    setStep('home'); setPeerState('disconnected');
-    setOfferCode(''); setAnswerCode(''); setInputVal('');
+  const disconnect = () => {
+    if (connRef.current) { connRef.current.disconnect(); connRef.current = null; }
+    setStep('home'); setRole(''); setConnState('disconnected');
+    setPin(''); setInputPin(''); setError('');
     setSelectedFiles([]); setTransfers({}); setReceivedFiles([]);
   };
 
-  const compact = (code) => { try { return JSON.stringify(JSON.parse(code)); } catch { return code; } };
   const activeCount = Object.values(transfers).filter(t => t.status === 'sending' || t.status === 'receiving').length;
 
   return (
@@ -171,120 +287,205 @@ export default function App() {
         <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl" />
       </div>
       {toast && (<div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-sm font-medium animate-fade-in shadow-lg bg-blue-500/20 text-blue-300 border border-blue-500/30 max-w-[90vw]">{toast}</div>)}
-      <div className="relative z-10 max-w-xl mx-auto px-4 py-6 sm:py-10 pb-20">
+
+      <div className="relative z-10 max-w-lg mx-auto px-4 py-6 sm:py-10 pb-20">
+        {/* Header */}
         <header className="text-center mb-8">
           <div className="inline-flex items-center gap-3 mb-3">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/25 text-white"><I.Wifi /></div>
             <h1 className="text-2xl sm:text-3xl font-bold gradient-text">FileSync</h1>
           </div>
-          <p className="text-white/50 text-sm">Secure peer-to-peer file sharing</p>
+          <p className="text-white/50 text-sm">Share files instantly via PIN or QR</p>
           <div className="flex justify-center gap-3 mt-2 flex-wrap">
-            <span className="inline-flex items-center gap-1 text-xs text-white/40"><I.Shield /> Encrypted</span><span className="text-white/20">•</span>
-            <span className="inline-flex items-center gap-1 text-xs text-white/40"><I.PhonePc /> Phone ↔ PC</span><span className="text-white/20">•</span>
-            <span className="inline-flex items-center gap-1 text-xs text-white/40"><I.Zap /> Instant P2P</span><span className="text-white/20">•</span>
-            <span className="text-xs text-white/40">No server</span>
+            <span className="inline-flex items-center gap-1 text-xs text-white/40"><I.Shield /> Encrypted</span>
+            <span className="text-white/20">•</span>
+            <span className="text-xs text-white/40">No server • P2P only</span>
           </div>
         </header>
-        {step !== 'home' && (<div className="flex items-center justify-between mb-6">
-          {step !== 'connected' ? (<button onClick={doReset} className="text-white/60 hover:text-white transition-colors flex items-center gap-1 text-sm"><I.ArrowLeft /> Back</button>) : <div />}
-          <StatusBadge state={peerState} />
-          {step === 'connected' && (<button onClick={doReset} className="btn-danger text-sm flex items-center gap-1"><I.X /> Disconnect</button>)}
-        </div>)}
 
-        {step === 'home' && (<div className="animate-slide-up space-y-6">
-          <div className="glass p-6 sm:p-8 text-center">
-            <h2 className="text-xl font-semibold mb-2">Share Files Directly</h2>
-            <p className="text-white/50 text-sm mb-6">Transfer files between devices on the same WiFi. No uploads, no cloud — direct peer-to-peer.</p>
-            <div className="flex bg-white/5 rounded-xl p-1 mb-6 max-w-xs mx-auto">
-              {['send', 'receive'].map(tab => (<button key={tab} onClick={() => setShowTab(tab)} className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all capitalize ${showTab === tab ? 'bg-blue-500/20 text-blue-400 shadow-sm' : 'text-white/50 hover:text-white/70'}`}>{tab}</button>))}
-            </div>
-            {showTab === 'send' ? (<button onClick={doCreateOffer} className="btn-primary w-full flex items-center justify-center gap-2 text-base"><I.Send /> Create Offer Code</button>) :
-            (<button onClick={() => { initPeer(); setStep('receive-input'); }} className="btn-primary w-full flex items-center justify-center gap-2 text-base"><I.Download /> I Have an Offer Code</button>)}
+        {/* Nav bar */}
+        {step !== 'home' && (
+          <div className="flex items-center justify-between mb-6">
+            {step !== 'connected' ? (<button onClick={disconnect} className="text-white/60 hover:text-white transition-colors flex items-center gap-1 text-sm"><I.ArrowLeft /> Back</button>) : <div />}
+            <StatusBadge state={connState} />
+            {step === 'connected' && (<button onClick={disconnect} className="btn-danger text-sm flex items-center gap-1"><I.X /> Disconnect</button>)}
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            {[{ n: '1', t: 'Create Code', d: 'Generate QR + text' }, { n: '2', t: 'Scan / Paste', d: 'Other device connects' }, { n: '3', t: 'Transfer', d: 'Direct P2P over WiFi' }].map(x => (
-              <div key={x.n} className="glass glass-hover p-4 text-center"><div className="w-8 h-8 mx-auto mb-2 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 text-blue-400 rounded-full flex items-center justify-center text-sm font-bold">{x.n}</div><p className="text-sm font-medium text-white/80">{x.t}</p><p className="text-xs text-white/40 mt-0.5">{x.d}</p></div>
-            ))}
-          </div>
-        </div>)}
+        )}
 
-        {step === 'send-offer' && (<div className="animate-slide-up space-y-6">
-          <div className="glass p-6">
-            <h3 className="text-lg font-semibold mb-1 flex items-center gap-2"><I.Send className="w-5 h-5 text-blue-400" /> Share Your Offer Code</h3>
-            <p className="text-white/50 text-sm mb-4">Show the QR code or share the text code with the receiving device.</p>
-            <QRBox data={compact(offerCode)} /><div className="mt-4"><CopyBlock label="Offer Code" text={offerCode} /></div>
-          </div>
-          <div className="glass p-6">
-            <h3 className="text-lg font-semibold mb-1 flex items-center gap-2"><I.Link className="w-5 h-5 text-cyan-400" /> Paste the Answer Code</h3>
-            <p className="text-white/50 text-sm mb-4">The receiver will generate an answer — paste it here.</p>
-            <textarea value={inputVal} onChange={e => setInputVal(e.target.value)} placeholder="Paste answer code here…" className="input-field font-mono text-xs h-24 resize-none" />
-            <button onClick={doAcceptAnswer} disabled={!inputVal.trim()} className="btn-primary w-full mt-4 flex items-center justify-center gap-2"><I.Link /> Connect</button>
-          </div>
-        </div>)}
+        {/* ═══════ HOME ═══════ */}
+        {step === 'home' && (
+          <div className="animate-slide-up space-y-6">
+            <div className="glass p-6 sm:p-8 text-center">
+              <h2 className="text-xl font-semibold mb-2">Quick & Simple</h2>
+              <p className="text-white/50 text-sm mb-6">One device generates a PIN. The other enters it. Files transfer directly — no server, no uploads.</p>
 
-        {step === 'receive-input' && (<div className="animate-slide-up">
-          <div className="glass p-6">
-            <h3 className="text-lg font-semibold mb-1 flex items-center gap-2"><I.Download className="w-5 h-5 text-cyan-400" /> Enter Offer Code</h3>
-            <p className="text-white/50 text-sm mb-4">Paste the code from the sending device.</p>
-            <textarea value={inputVal} onChange={e => setInputVal(e.target.value)} placeholder="Paste offer code here…" className="input-field font-mono text-xs h-28 resize-none" />
-            <button onClick={doCreateAnswer} disabled={!inputVal.trim()} className="btn-primary w-full mt-4 flex items-center justify-center gap-2"><I.Send /> Generate Answer Code</button>
-          </div>
-        </div>)}
-
-        {step === 'send-input' && (<div className="animate-slide-up">
-          <div className="glass p-6">
-            <h3 className="text-lg font-semibold mb-1 flex items-center gap-2"><I.Link className="w-5 h-5 text-cyan-400" /> Share Your Answer Code</h3>
-            <p className="text-white/50 text-sm mb-4">Show the QR or text code to the sending device.</p>
-            <QRBox data={compact(answerCode)} /><div className="mt-4"><CopyBlock label="Answer Code" text={answerCode} /></div>
-            <p className="text-center text-xs text-white/40 mt-4">Waiting for the sender to connect…</p>
-          </div>
-        </div>)}
-
-        {step === 'connected' && (<div className="animate-slide-up space-y-6">
-          {activeCount > 0 && (<div className="glass p-4 border-blue-500/30">
-            <div className="flex items-center justify-between mb-3"><span className="text-sm font-medium text-blue-300">{activeCount} active transfer{activeCount > 1 ? 's' : ''}</span><div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" /></div>
-            <div className="space-y-3">{Object.entries(transfers).filter(([, t]) => t.status === 'sending' || t.status === 'receiving').map(([id, t]) => (<div key={id}><div className="flex justify-between text-xs text-white/60 mb-1"><span className="truncate mr-2">{t.name}</span><span className="shrink-0">{Math.round(t.progress)}%</span></div><PBar progress={t.progress} /></div>))}</div>
-          </div>)}
-          <div className="glass p-6">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><I.Upload className="w-5 h-5 text-blue-400" /> Send Files</h3>
-            <div className="border-2 border-dashed border-white/10 rounded-xl p-8 text-center hover:border-blue-500/30 transition-colors cursor-pointer" onClick={() => fileRef.current?.click()}>
-              <input ref={fileRef} type="file" multiple onChange={e => setSelectedFiles(Array.from(e.target.files || []))} className="hidden" />
-              <div className="w-12 h-12 mx-auto mb-3 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-400"><I.Upload /></div>
-              <p className="text-sm text-white/70 mb-1">{selectedFiles.length > 0 ? `${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''} selected` : 'Tap to select files'}</p>
-              <p className="text-xs text-white/40">{selectedFiles.length > 0 ? fmtSize(selectedFiles.reduce((s, f) => s + f.size, 0)) : 'Any file type, any size'}</p>
-            </div>
-            {selectedFiles.length > 0 && (<div className="mt-4 space-y-2 max-h-48 overflow-y-auto scrollbar-hide">
-              {selectedFiles.map((f, i) => (<div key={i} className="flex items-center gap-3 bg-white/5 rounded-lg p-2.5 border border-white/5">
-                <div className="w-7 h-7 bg-blue-500/20 rounded-lg flex items-center justify-center text-blue-400 shrink-0"><I.File className="w-4 h-4" /></div>
-                <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{f.name}</p><p className="text-xs text-white/40">{fmtSize(f.size)}</p></div>
-              </div>))}
-              <button onClick={doSendFiles} className="btn-primary w-full mt-2 flex items-center justify-center gap-2"><I.Send /> Send {selectedFiles.length} File{selectedFiles.length !== 1 ? 's' : ''}</button>
-            </div>)}
-            {Object.keys(transfers).length > 0 && (<div className="mt-4"><h4 className="text-sm font-medium text-white/60 mb-2">Transfer History</h4>
-              <div className="space-y-1.5 max-h-40 overflow-y-auto scrollbar-hide">{Object.entries(transfers).reverse().map(([id, t]) => (<div key={id} className="flex items-center gap-3 bg-white/5 rounded-lg p-2.5 border border-white/5">
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${t.status === 'sent' || t.status === 'received' ? 'bg-green-500/20 text-green-400' : t.status === 'error' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>{t.status === 'sent' || t.status === 'received' ? <I.Check className="w-4 h-4" /> : t.status === 'error' ? <I.X className="w-4 h-4" /> : <I.Send className="w-4 h-4" />}</div>
-                <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{t.name}</p><p className="text-xs text-white/40">{fmtSize(t.size)}</p></div>
-                {t.status === 'sent' || t.status === 'received' ? <PBar progress={t.progress} color="green" /> : t.status === 'sending' || t.status === 'receiving' ? <PBar progress={t.progress} /> : t.status === 'error' ? <span className="text-xs text-red-400">Failed</span> : null}
-              </div>))}</div>
-            </div>)}
-          </div>
-          {receivedFiles.length > 0 && (<div className="glass p-6">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><I.Download className="w-5 h-5 text-green-400" /> Received Files</h3>
-            <div className="space-y-2 max-h-64 overflow-y-auto scrollbar-hide">{receivedFiles.map(f => (<div key={f.id} className="flex items-center gap-3 bg-white/5 rounded-xl p-3 border border-white/10">
-              <div className="w-8 h-8 bg-green-500/20 rounded-lg flex items-center justify-center text-green-400 shrink-0"><I.Download className="w-4 h-4" /></div>
-              <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{f.name}</p><p className="text-xs text-white/40">{fmtSize(f.size)}</p></div>
-              <div className="flex gap-2 shrink-0">
-                <button onClick={() => doDownload(f)} className="btn-secondary text-sm px-3 py-1.5 flex items-center gap-1"><I.Download className="w-4 h-4" /> Save</button>
-                <button onClick={() => setReceivedFiles(p => p.filter(x => x.id !== f.id))} className="p-2 bg-white/5 rounded-lg hover:bg-red-500/20 hover:text-red-400 text-white/40 transition-all"><I.Trash /></button>
+              <div className="space-y-3">
+                <button onClick={startSender} className="btn-primary w-full flex items-center justify-center gap-2 text-base py-4">
+                  <I.Send /> Send — Generate PIN
+                </button>
+                <button onClick={() => { setStep('receiver'); setRole('receiver'); setInputPin(''); setError(''); }} className="btn-secondary w-full flex items-center justify-center gap-2 text-base py-4">
+                  <I.Download /> Receive — Enter PIN
+                </button>
               </div>
-            </div>))}</div>
-          </div>)}
-        </div>)}
+            </div>
 
-        {(peerState === 'connecting' || peerState === 'new') && (<div className="animate-fade-in glass p-8 text-center"><div className="w-16 h-16 mx-auto mb-4 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" /><h3 className="text-lg font-semibold mb-2">Connecting…</h3><p className="text-white/50 text-sm">Establishing peer-to-peer connection</p></div>)}
-        {peerState === 'error' && (<div className="animate-fade-in glass p-8 text-center border-red-500/30"><div className="w-16 h-16 mx-auto mb-4 bg-red-500/20 rounded-full flex items-center justify-center text-red-400 text-2xl">⚠️</div><h3 className="text-lg font-semibold mb-2 text-red-400">Connection Error</h3><p className="text-white/50 text-sm mb-6">Something went wrong. Please try again.</p><button onClick={doReset} className="btn-primary">Start Over</button></div>)}
-        <footer className="text-center mt-12 pb-6"><p className="text-xs text-white/30">Files transfer directly via WebRTC • No data stored or uploaded</p></footer>
+            <div className="glass p-5">
+              <h3 className="text-sm font-semibold text-white/80 mb-3 text-center">How it works</h3>
+              <div className="flex items-center gap-4 text-xs text-white/50">
+                <div className="flex-1 text-center">
+                  <div className="w-8 h-8 mx-auto mb-1 bg-blue-500/20 text-blue-400 rounded-full flex items-center justify-center font-bold">1</div>
+                  Generate PIN
+                </div>
+                <div className="text-white/20">→</div>
+                <div className="flex-1 text-center">
+                  <div className="w-8 h-8 mx-auto mb-1 bg-blue-500/20 text-blue-400 rounded-full flex items-center justify-center font-bold">2</div>
+                  Share PIN / QR
+                </div>
+                <div className="text-white/20">→</div>
+                <div className="flex-1 text-center">
+                  <div className="w-8 h-8 mx-auto mb-1 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center font-bold">3</div>
+                  Send Files
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════ SENDER: Show PIN + QR ═══════ */}
+        {step === 'sender' && connState === 'creating' && (
+          <div className="animate-slide-up glass p-8 text-center">
+            <div className="w-10 h-10 mx-auto mb-4 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+            <p className="text-white/60">Setting up secure connection…</p>
+          </div>
+        )}
+
+        {step === 'sender' && connState === 'waiting' && (
+          <div className="animate-slide-up space-y-6">
+            <div className="glass p-6 text-center">
+              <h3 className="text-lg font-semibold mb-1">Share this PIN</h3>
+              <p className="text-white/50 text-sm mb-2">Show the QR code or tell them the PIN</p>
+
+              <PinDisplay pin={pin} />
+
+              <div className="flex items-center justify-center gap-3 mt-2">
+                <button onClick={() => { copyText(pin); setCopiedPin(true); setTimeout(() => setCopiedPin(false), 2000); }} className="flex items-center gap-1.5 text-sm text-white/60 hover:text-white transition-colors">
+                  {copiedPin ? <I.Check /> : <I.CopyPin />}
+                  {copiedPin ? 'Copied!' : 'Copy PIN'}
+                </button>
+              </div>
+
+              <div className="mt-6">
+                <QRBox data={pin} label="Scan with other device" />
+              </div>
+            </div>
+
+            <div className="glass p-4 border-amber-500/20">
+              <p className="text-xs text-amber-400/80 text-center">⏳ Waiting for someone to connect with this PIN…</p>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════ RECEIVER: Enter PIN ═══════ */}
+        {step === 'receiver' && (connState === 'disconnected' || connState === 'error') && (
+          <div className="animate-slide-up space-y-6">
+            <div className="glass p-6">
+              <h3 className="text-lg font-semibold mb-1 text-center">Enter PIN</h3>
+              <p className="text-white/50 text-sm mb-6 text-center">Type the 6-digit PIN from the sending device</p>
+
+              <PinInput value={inputPin} onChange={setInputPin} onSubmit={connectAsReceiver} disabled={connState === 'connecting'} error={error} />
+            </div>
+          </div>
+        )}
+
+        {step === 'receiver' && connState === 'connecting' && (
+          <div className="animate-slide-up glass p-8 text-center">
+            <div className="w-10 h-10 mx-auto mb-4 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+            <p className="text-white/60">Connecting to sender…</p>
+            {error && <p className="text-red-400 text-sm mt-3">{error}</p>}
+          </div>
+        )}
+
+        {/* ═══════ CONNECTED: Transfer UI ═══════ */}
+        {step === 'sender' && connState === 'connected' || step === 'receiver' && connState === 'connected' ? (
+          <div className="animate-slide-up space-y-6">
+            {/* Active transfers */}
+            {activeCount > 0 && (
+              <div className="glass p-4 border-blue-500/30">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium text-blue-300">{activeCount} active transfer{activeCount > 1 ? 's' : ''}</span>
+                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
+                </div>
+                <div className="space-y-3">
+                  {Object.entries(transfers).filter(([, t]) => t.status === 'sending' || t.status === 'receiving').map(([id, t]) => (
+                    <div key={id}>
+                      <div className="flex justify-between text-xs text-white/60 mb-1"><span className="truncate mr-2">{t.name}</span><span className="shrink-0">{Math.round(t.progress)}%</span></div>
+                      <PBar progress={t.progress} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Send panel */}
+            <div className="glass p-6">
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><I.Upload className="w-5 h-5 text-blue-400" /> Send Files</h3>
+              <div className="border-2 border-dashed border-white/10 rounded-xl p-8 text-center hover:border-blue-500/30 transition-colors cursor-pointer" onClick={() => fileRef.current?.click()}>
+                <input ref={fileRef} type="file" multiple onChange={e => setSelectedFiles(Array.from(e.target.files || []))} className="hidden" />
+                <div className="w-12 h-12 mx-auto mb-3 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-400"><I.Upload /></div>
+                <p className="text-sm text-white/70 mb-1">{selectedFiles.length > 0 ? `${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''} selected` : 'Tap to select files'}</p>
+                <p className="text-xs text-white/40">{selectedFiles.length > 0 ? fmtSize(selectedFiles.reduce((s, f) => s + f.size, 0)) : 'Any file type, any size'}</p>
+              </div>
+
+              {selectedFiles.length > 0 && (
+                <div className="mt-4 space-y-2 max-h-48 overflow-y-auto scrollbar-hide">
+                  {selectedFiles.map((f, i) => (
+                    <div key={i} className="flex items-center gap-3 bg-white/5 rounded-lg p-2.5 border border-white/5">
+                      <div className="w-7 h-7 bg-blue-500/20 rounded-lg flex items-center justify-center text-blue-400 shrink-0"><I.File className="w-4 h-4" /></div>
+                      <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{f.name}</p><p className="text-xs text-white/40">{fmtSize(f.size)}</p></div>
+                    </div>
+                  ))}
+                  <button onClick={sendFiles} className="btn-primary w-full mt-2 flex items-center justify-center gap-2"><I.Send /> Send {selectedFiles.length} File{selectedFiles.length !== 1 ? 's' : ''}</button>
+                </div>
+              )}
+
+              {/* History */}
+              {Object.keys(transfers).length > 0 && (
+                <div className="mt-4"><h4 className="text-sm font-medium text-white/60 mb-2">Transfer History</h4>
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto scrollbar-hide">{Object.entries(transfers).reverse().map(([id, t]) => (
+                    <div key={id} className="flex items-center gap-3 bg-white/5 rounded-lg p-2.5 border border-white/5">
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${t.status === 'sent' || t.status === 'received' ? 'bg-green-500/20 text-green-400' : t.status === 'error' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                        {t.status === 'sent' || t.status === 'received' ? <I.Check className="w-4 h-4" /> : t.status === 'error' ? <I.X className="w-4 h-4" /> : <I.Send className="w-4 h-4" />}
+                      </div>
+                      <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{t.name}</p><p className="text-xs text-white/40">{fmtSize(t.size)}</p></div>
+                      {t.status === 'sent' || t.status === 'received' ? <PBar progress={t.progress} color="green" /> : t.status === 'sending' || t.status === 'receiving' ? <PBar progress={t.progress} /> : t.status === 'error' ? <span className="text-xs text-red-400">Failed</span> : null}
+                    </div>
+                  ))}</div>
+                </div>
+              )}
+            </div>
+
+            {/* Received files */}
+            {receivedFiles.length > 0 && (
+              <div className="glass p-6">
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2"><I.Download className="w-5 h-5 text-green-400" /> Received</h3>
+                <div className="space-y-2 max-h-64 overflow-y-auto scrollbar-hide">{receivedFiles.map(f => (
+                  <div key={f.id} className="flex items-center gap-3 bg-white/5 rounded-xl p-3 border border-white/10">
+                    <div className="w-8 h-8 bg-green-500/20 rounded-lg flex items-center justify-center text-green-400 shrink-0"><I.Download className="w-4 h-4" /></div>
+                    <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{f.name}</p><p className="text-xs text-white/40">{fmtSize(f.size)}</p></div>
+                    <div className="flex gap-2 shrink-0">
+                      <button onClick={() => downloadFile(f)} className="btn-secondary text-sm px-3 py-1.5 flex items-center gap-1"><I.Download className="w-4 h-4" /> Save</button>
+                      <button onClick={() => setReceivedFiles(p => p.filter(x => x.id !== f.id))} className="p-2 bg-white/5 rounded-lg hover:bg-red-500/20 hover:text-red-400 text-white/40 transition-all"><I.Trash /></button>
+                    </div>
+                  </div>
+                ))}</div>
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        <footer className="text-center mt-12 pb-6"><p className="text-xs text-white/30">Files transfer directly via WebRTC • End-to-end encrypted</p></footer>
       </div>
+
       <PWAInstallBanner prompt={installPrompt} onInstall={doInstall} onDismiss={() => setInstallPrompt(null)} />
     </div>
   );

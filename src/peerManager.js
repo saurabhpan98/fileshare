@@ -1,79 +1,97 @@
-const RTC_CONFIG = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-  ],
-};
+import { Peer } from 'peerjs';
+
 const CHUNK_SIZE = 16 * 1024;
 
-export class PeerManager {
+export function generatePin() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+export class PeerConnection {
   constructor(onStateChange, onFileReceived, onProgress) {
-    this.pc = null; this.dc = null;
-    this.onStateChange = onStateChange; this.onFileReceived = onFileReceived; this.onProgress = onProgress;
-    this.receiveBuffers = new Map(); this.receiveExpected = new Map(); this.currentReceiveId = null;
+    this.peer = null;
+    this.conn = null;
+    this.onStateChange = onStateChange;
+    this.onFileReceived = onFileReceived;
+    this.onProgress = onProgress;
+    this.receiveBuffers = new Map();
+    this.receiveExpected = new Map();
+    this.currentReceiveId = null;
   }
 
-  async createOffer() {
-    this.pc = new RTCPeerConnection(RTC_CONFIG);
-    this._setupPeerEvents();
-    this.dc = this.pc.createDataChannel('fileshare', { ordered: true });
-    this._setupChannelEvents(this.dc);
-    const offer = await this.pc.createOffer();
-    await this.pc.setLocalDescription(offer);
-    await this._waitICE();
-    this.onStateChange('offer-ready');
-    return JSON.stringify(this.pc.localDescription);
+  /* ─── SENDER: create PIN and wait for receiver ─── */
+  async startSender(pin) {
+    return new Promise((resolve, reject) => {
+      const peerId = `filesync-s-${pin}`;
+      this.peer = new Peer(peerId, { debug: 0 });
+
+      this.peer.on('open', () => {
+        this.onStateChange('waiting');
+        resolve(pin);
+      });
+
+      this.peer.on('connection', (conn) => {
+        this.conn = conn;
+        this._setupConnection();
+        conn.on('open', () => this.onStateChange('connected'));
+      });
+
+      this.peer.on('error', (err) => {
+        if (err.type === 'unavailable-id') reject(new Error('PIN in use — try again'));
+        else { console.error(err); reject(err); }
+      });
+
+      setTimeout(() => {
+        if (this.peer && !this.conn) { this.peer.destroy(); reject(new Error('Timed out waiting')); }
+      }, 180000);
+    });
   }
 
-  async createAnswer(offerJSON) {
-    this.pc = new RTCPeerConnection(RTC_CONFIG);
-    this._setupPeerEvents();
-    this.pc.ondatachannel = (e) => { this.dc = e.channel; this._setupChannelEvents(this.dc); };
-    const offer = JSON.parse(offerJSON);
-    await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await this.pc.createAnswer();
-    await this.pc.setLocalDescription(answer);
-    await this._waitICE();
-    this.onStateChange('answer-ready');
-    return JSON.stringify(this.pc.localDescription);
-  }
+  /* ─── RECEIVER: connect to sender's PIN ─── */
+  async startReceiver(pin) {
+    return new Promise((resolve, reject) => {
+      this.peer = new Peer(`filesync-r-${generatePin()}`, { debug: 0 });
 
-  async acceptAnswer(answerJSON) {
-    await this.pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(answerJSON)));
+      this.peer.on('open', () => {
+        this.onStateChange('connecting');
+        const conn = this.peer.connect(`filesync-s-${pin}`, { reliable: true, serialization: 'binary' });
+        this.conn = conn;
+        this._setupConnection();
+        conn.on('open', () => { this.onStateChange('connected'); resolve(); });
+        conn.on('error', () => reject(new Error('Connection failed')));
+      });
+
+      this.peer.on('error', (err) => {
+        if (err.type === 'peer-unavailable') reject(new Error('Sender not found'));
+        else { console.error(err); reject(err); }
+      });
+
+      setTimeout(() => {
+        if (this.peer?.open && !this.conn?.open) { this.peer.destroy(); reject(new Error('Timed out')); }
+      }, 30000);
+    });
   }
 
   async sendFiles(fileList) {
-    if (!this.dc || this.dc.readyState !== 'open') throw new Error('Channel not open');
-    for (const file of fileList) { const id = crypto.randomUUID(); this._sendFile(file, id); }
+    if (!this.conn?.open) throw new Error('Not connected');
+    for (const file of fileList) this._sendFile(file, crypto.randomUUID());
   }
 
   disconnect() {
-    if (this.dc) { try { this.dc.close(); } catch(_){} this.dc = null; }
-    if (this.pc) { try { this.pc.close(); } catch(_){} this.pc = null; }
+    if (this.conn) { try { this.conn.close(); } catch(_){} this.conn = null; }
+    if (this.peer) { try { this.peer.destroy(); } catch(_){} this.peer = null; }
     this.receiveBuffers.clear(); this.receiveExpected.clear();
     this.currentReceiveId = null; this.onStateChange('disconnected');
   }
-  getState() { return this.pc ? (this.pc.connectionState || 'disconnected') : 'disconnected'; }
 
-  _setupPeerEvents() {
-    this.pc.onconnectionstatechange = () => {
-      const s = this.pc.connectionState;
-      if (s === 'connected') this.onStateChange('connected');
-      else if (['disconnected','failed','closed'].includes(s)) this.onStateChange('disconnected');
-      else if (s === 'connecting') this.onStateChange('connecting');
-    };
+  _setupConnection() {
+    this.conn.on('close', () => this.onStateChange('disconnected'));
+    this.conn.on('error', () => this.onStateChange('error'));
+    this.conn.on('data', (d) => this._handleData(d));
   }
 
-  _setupChannelEvents(ch) {
-    ch.onopen = () => this.onStateChange('connected');
-    ch.onclose = () => this.onStateChange('disconnected');
-    ch.onerror = () => this.onStateChange('error');
-    ch.onmessage = (e) => this._handleMsg(e);
-  }
-
-  _handleMsg(event) {
-    if (typeof event.data === 'string') {
-      let msg; try { msg = JSON.parse(event.data); } catch { return; }
+  _handleData(data) {
+    if (typeof data === 'string') {
+      let msg; try { msg = JSON.parse(data); } catch { return; }
       if (msg.type === 'file-start') {
         this.currentReceiveId = msg.fileId;
         this.receiveBuffers.set(msg.fileId, []);
@@ -83,19 +101,17 @@ export class PeerManager {
         const chunks = this.receiveBuffers.get(msg.fileId);
         const exp = this.receiveExpected.get(msg.fileId);
         if (chunks && exp) {
-          const blob = new Blob(chunks, { type: exp.mimeType });
-          this.onFileReceived(new File([blob], exp.name, { type: exp.mimeType }));
+          this.onFileReceived(new File([new Blob(chunks, { type: exp.mimeType })], exp.name, { type: exp.mimeType }));
         }
         this.receiveBuffers.delete(msg.fileId); this.receiveExpected.delete(msg.fileId);
-        this.currentReceiveId = null;
-        this.onProgress(msg.fileId, { progress: 100, status: 'received' });
+        this.currentReceiveId = null; this.onProgress(msg.fileId, { progress: 100, status: 'received' });
       }
-    } else if (event.data instanceof ArrayBuffer) {
+    } else if (data instanceof ArrayBuffer) {
       if (this.currentReceiveId && this.receiveBuffers.has(this.currentReceiveId)) {
-        this.receiveBuffers.get(this.currentReceiveId).push(event.data); this._updateProgress();
+        this.receiveBuffers.get(this.currentReceiveId).push(data); this._updateProgress();
       }
-    } else if (event.data instanceof Blob) {
-      event.data.arrayBuffer().then((ab) => {
+    } else if (data instanceof Blob) {
+      data.arrayBuffer().then((ab) => {
         if (this.currentReceiveId && this.receiveBuffers.has(this.currentReceiveId)) {
           this.receiveBuffers.get(this.currentReceiveId).push(ab); this._updateProgress();
         }
@@ -104,40 +120,29 @@ export class PeerManager {
   }
 
   _updateProgress() {
-    if (this.currentReceiveId) {
-      const exp = this.receiveExpected.get(this.currentReceiveId);
-      if (exp) {
-        const recv = this.receiveBuffers.get(this.currentReceiveId).reduce((s, c) => s + c.byteLength, 0);
-        this.onProgress(this.currentReceiveId, { progress: Math.min((recv / exp.total) * 100, 100), status: 'receiving' });
-      }
-    }
+    if (!this.currentReceiveId) return;
+    const exp = this.receiveExpected.get(this.currentReceiveId);
+    if (!exp) return;
+    const recv = this.receiveBuffers.get(this.currentReceiveId).reduce((s, c) => s + c.byteLength, 0);
+    this.onProgress(this.currentReceiveId, { progress: Math.min((recv / exp.total) * 100, 100), status: 'receiving' });
   }
 
   _sendFile(file, fileId) {
-    this.dc.send(JSON.stringify({ type: 'file-start', fileId, fileName: file.name, fileSize: file.size, mimeType: file.type }));
+    this.conn.send(JSON.stringify({ type: 'file-start', fileId, fileName: file.name, fileSize: file.size, mimeType: file.type }));
     this.onProgress(fileId, { progress: 0, status: 'sending' });
     file.arrayBuffer().then((ab) => {
       let offset = 0;
-      const sendChunk = () => {
+      const send = () => {
         if (offset >= ab.byteLength) {
-          this.dc.send(JSON.stringify({ type: 'file-end', fileId }));
+          this.conn.send(JSON.stringify({ type: 'file-end', fileId }));
           this.onProgress(fileId, { progress: 100, status: 'sent' }); return;
         }
         const end = Math.min(offset + CHUNK_SIZE, ab.byteLength);
-        this.dc.send(ab.slice(offset, end)); offset = end;
-        this.onProgress(fileId, { progress: Math.min((offset / ab.byteLength) * 100, 100), status: 'sending' });
-        setTimeout(sendChunk, 3);
+        this.conn.send(ab.slice(offset, end)); offset = end;
+        this.onProgress(fileId, { progress: (offset / ab.byteLength) * 100, status: 'sending' });
+        setTimeout(send, 3);
       };
-      sendChunk();
-    });
-  }
-
-  _waitICE() {
-    return new Promise((resolve) => {
-      if (this.pc.iceGatheringState === 'complete') { resolve(); return; }
-      const h = () => { if (this.pc.iceGatheringState === 'complete') { this.pc.removeEventListener('icegatheringstatechange', h); resolve(); } };
-      this.pc.addEventListener('icegatheringstatechange', h);
-      setTimeout(resolve, 6000);
+      send();
     });
   }
 }
