@@ -19,11 +19,12 @@ const I = {
   Camera: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>,
   Key: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>,
   CopyPin: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
+  Heart: (p) => <svg {...p} xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>,
 };
 
 /* ═══ Helpers ═══ */
 function fmtSize(b) {
-  if (b === 0) return '0 B';
+  if (b == null || isNaN(b) || b === 0) return '0 B';
   const k = 1024, s = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(b) / Math.log(k));
   return parseFloat((b / Math.pow(k, i)).toFixed(1)) + ' ' + s[i];
@@ -50,7 +51,8 @@ const StatusBadge = ({ state }) => {
 
 const PBar = ({ progress, color = 'blue' }) => {
   const g = color === 'green' ? 'from-green-500 to-emerald-400' : 'from-blue-500 to-cyan-400';
-  return (<div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden"><div className={`h-full bg-gradient-to-r ${g} rounded-full transition-all duration-300`} style={{ width: `${Math.min(progress, 100)}%` }} /></div>);
+  const pct = progress == null || isNaN(progress) ? 0 : Math.min(progress, 100);
+  return (<div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden"><div className={`h-full bg-gradient-to-r ${g} rounded-full transition-all duration-300`} style={{ width: `${pct}%` }} /></div>);
 };
 
 const QRBox = ({ data, label }) => (
@@ -94,23 +96,41 @@ const PinInput = ({ value, onChange, onSubmit, disabled, error }) => {
     if (!val) return;
     const digits = val.split('');
     const newVals = value.split('');
-    // Distribute entered digits
-    digits.forEach((d, di) => { if (i + di < 6) newVals[i + di] = d; });
+    // Replace current position and distribute remaining digits forward
+    // Take only the last digit if multiple were pasted into one box
+    const relevantDigits = val.length > 1 ? digits : digits;
+    relevantDigits.forEach((d, di) => { if (i + di < 6) newVals[i + di] = d; });
     const result = newVals.join('');
     onChange(result);
     // Auto-focus next
-    const nextIdx = Math.min(i + digits.length, 5);
-    if (digits.length === 1 && nextIdx < 5 && refs.current[nextIdx]) {
+    const nextIdx = Math.min(i + relevantDigits.length, 5);
+    if (relevantDigits.length === 1 && nextIdx < 5 && refs.current[nextIdx]) {
       refs.current[nextIdx].focus();
     }
   };
 
   const handleKeyDown = (i, e) => {
-    if (e.key === 'Backspace' && !value[i] && i > 0 && refs.current[i - 1]) {
-      refs.current[i - 1].focus();
+    if (e.key === 'Backspace') {
+      e.preventDefault();
       const newVals = value.split('');
-      newVals[i - 1] = '';
-      onChange(newVals.join(''));
+      if (newVals[i]) {
+        // Delete digit at current position
+        newVals[i] = '';
+        onChange(newVals.join(''));
+      } else if (i > 0) {
+        // Current is empty, go back and delete previous
+        newVals[i - 1] = '';
+        onChange(newVals.join(''));
+        if (refs.current[i - 1]) refs.current[i - 1].focus();
+      }
+    }
+    if (e.key === 'ArrowLeft' && i > 0 && refs.current[i - 1]) {
+      e.preventDefault();
+      refs.current[i - 1].focus();
+    }
+    if (e.key === 'ArrowRight' && i < 5 && refs.current[i + 1]) {
+      e.preventDefault();
+      refs.current[i + 1].focus();
     }
     if (e.key === 'Enter' && value.length === 6 && onSubmit) onSubmit();
   };
@@ -154,7 +174,7 @@ const PinInput = ({ value, onChange, onSubmit, disabled, error }) => {
    ═══════════════════════════════════════════════ */
 export default function App() {
   const [step, setStep] = useState('home'); // home | sender | receiver | connected
-  const [role, setRole] = useState('');     // sender | receiver
+  const [role, setRole] = useState(''); // sender | receiver
   const [connState, setConnState] = useState('disconnected');
   const [pin, setPin] = useState('');
   const [inputPin, setInputPin] = useState('');
@@ -194,6 +214,50 @@ export default function App() {
 
   useEffect(() => { requestAnimationFrame(() => hideSplash()); }, []);
 
+  /* ─── Auto-connect from URL PIN parameter ─── */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlPin = params.get('pin');
+    if (urlPin && /^\d{6}$/.test(urlPin)) {
+      setInputPin(urlPin);
+      setRole('receiver');
+      setStep('receiver');
+      setError('');
+      // Delay connection slightly to let the UI render
+      setTimeout(() => {
+        connectWithPin(urlPin);
+      }, 500);
+    }
+  }, []);
+
+  const connectWithPin = useCallback(async (pinToUse) => {
+    if (!pinToUse || pinToUse.length !== 6) return;
+    setRole('receiver');
+    setStep('receiver');
+    setConnState('connecting');
+    setError('');
+
+    const pc = new PeerConnection(
+      (s) => { setConnState(s); if (s === 'connected') toast_('Connected! You can receive files now.'); if (s === 'error') { toast_('Connection lost'); setConnState('disconnected'); } },
+      (file) => {
+        const id = ++tidRef.current;
+        setReceivedFiles(p => [{ id, name: file.name, size: file.size, type: file.type, blob: file, ts: Date.now() }, ...p]);
+        toast_('Received: ' + file.name);
+      },
+      (fid, { progress, status, name, size }) => {
+        setTransfers(p => ({ ...p, [fid]: { ...(p[fid] || {}), progress, status, name: name || (p[fid] || {}).name, size: size != null ? size : (p[fid] || {}).size } }));
+      }
+    );
+    connRef.current = pc;
+
+    try {
+      await pc.startReceiver(pinToUse);
+    } catch (err) {
+      setError(err.message || 'Failed to connect');
+      setConnState('disconnected');
+    }
+  }, []);
+
   /* ─── Start as SENDER: generate PIN ─── */
   const startSender = useCallback(async () => {
     const newPin = generatePin();
@@ -210,8 +274,8 @@ export default function App() {
         setReceivedFiles(p => [{ id, name: file.name, size: file.size, type: file.type, blob: file, ts: Date.now() }, ...p]);
         toast_('Received: ' + file.name);
       },
-      (fid, { progress, status }) => {
-        setTransfers(p => ({ ...p, [fid]: { ...(p[fid] || {}), progress, status } }));
+      (fid, { progress, status, name, size }) => {
+        setTransfers(p => ({ ...p, [fid]: { ...(p[fid] || {}), progress, status, name: name || (p[fid] || {}).name, size: size != null ? size : (p[fid] || {}).size } }));
       }
     );
     connRef.current = pc;
@@ -227,42 +291,27 @@ export default function App() {
   /* ─── Start as RECEIVER: enter PIN ─── */
   const connectAsReceiver = useCallback(async () => {
     if (inputPin.length !== 6) return;
-    setRole('receiver');
-    setStep('receiver');
-    setConnState('connecting');
-    setError('');
-
-    const pc = new PeerConnection(
-      (s) => { setConnState(s); if (s === 'connected') toast_('Connected! You can receive files now.'); if (s === 'error') { toast_('Connection lost'); setConnState('disconnected'); } },
-      (file) => {
-        const id = ++tidRef.current;
-        setReceivedFiles(p => [{ id, name: file.name, size: file.size, type: file.type, blob: file, ts: Date.now() }, ...p]);
-        toast_('Received: ' + file.name);
-      },
-      (fid, { progress, status }) => {
-        setTransfers(p => ({ ...p, [fid]: { ...(p[fid] || {}), progress, status } }));
-      }
-    );
-    connRef.current = pc;
-
-    try {
-      await pc.startReceiver(inputPin);
-    } catch (err) {
-      setError(err.message || 'Failed to connect');
-      setConnState('disconnected');
-    }
-  }, [inputPin]);
+    await connectWithPin(inputPin);
+  }, [inputPin, connectWithPin]);
 
   /* ─── Send files ─── */
   const sendFiles = async () => {
     const pc = connRef.current;
     if (!pc || selectedFiles.length === 0) return;
-    for (const f of selectedFiles) {
-      const id = ++tidRef.current;
-      setTransfers(p => ({ ...p, [id]: { name: f.name, size: f.size, progress: 0, status: 'sending' } }));
-      try { await pc.sendFiles([f]); }
-      catch { setTransfers(p => ({ ...p, [id]: { ...(p[id] || {}), status: 'error' } })); }
+    try {
+      const results = await pc.sendFiles(selectedFiles);
+      // Use the returned fileIds to seed transfer state with name/size
+      results.forEach(({ fileId, name, size }) => {
+        setTransfers(p => ({ ...p, [fileId]: { ...(p[fileId] || {}), name, size, progress: 0, status: 'sending' } }));
+      });
+    } catch {
+      // Mark all selected files as error in transfers
+      for (const f of selectedFiles) {
+        const id = ++tidRef.current;
+        setTransfers(p => ({ ...p, [id]: { name: f.name, size: f.size, progress: 0, status: 'error' } }));
+      }
     }
+    setSelectedFiles([]);
   };
 
   const downloadFile = (rf) => {
@@ -278,60 +327,62 @@ export default function App() {
     setSelectedFiles([]); setTransfers({}); setReceivedFiles([]);
   };
 
+  /* ─── Build QR URL with PIN ─── */
+  const qrUrl = (() => {
+    const base = window.location.origin + window.location.pathname;
+    return `${base}?pin=${pin}`;
+  })();
+
   const activeCount = Object.values(transfers).filter(t => t.status === 'sending' || t.status === 'receiving').length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-gray-900 to-slate-950 text-white relative">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-gray-900 to-slate-950 text-white relative flex flex-col">
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
         <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl" />
       </div>
       {toast && (<div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-sm font-medium animate-fade-in shadow-lg bg-blue-500/20 text-blue-300 border border-blue-500/30 max-w-[90vw]">{toast}</div>)}
 
-      <div className="relative z-10 max-w-lg mx-auto px-4 py-6 sm:py-10 pb-20">
+      <div className="relative z-10 max-w-md mx-auto px-4 py-6 w-full flex-1">
         {/* Header */}
-        <header className="text-center mb-8">
-          <div className="inline-flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/25 text-white"><I.Wifi /></div>
-            <h1 className="text-2xl sm:text-3xl font-bold gradient-text">FileSync</h1>
-          </div>
-          <p className="text-white/50 text-sm">Share files instantly via PIN or QR</p>
-          <div className="flex justify-center gap-3 mt-2 flex-wrap">
-            <span className="inline-flex items-center gap-1 text-xs text-white/40"><I.Shield /> Encrypted</span>
-            <span className="text-white/20">•</span>
-            <span className="text-xs text-white/40">No server • P2P only</span>
-          </div>
-        </header>
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-extrabold gradient-text tracking-tight">FileSync</h1>
+          <p className="text-white/40 text-sm mt-1">PIN-Based P2P File Transfer</p>
+        </div>
 
         {/* Nav bar */}
         {step !== 'home' && (
           <div className="flex items-center justify-between mb-6">
-            {step !== 'connected' ? (<button onClick={disconnect} className="text-white/60 hover:text-white transition-colors flex items-center gap-1 text-sm"><I.ArrowLeft /> Back</button>) : <div />}
+            {step !== 'connected' ? (
+              <button onClick={disconnect} className="flex items-center gap-1.5 text-sm text-white/50 hover:text-white transition-colors"><I.ArrowLeft /> Back</button>
+            ) : <div />}
             <StatusBadge state={connState} />
-            {step === 'connected' && (<button onClick={disconnect} className="btn-danger text-sm flex items-center gap-1"><I.X /> Disconnect</button>)}
+            {step === 'connected' && (
+              <button onClick={disconnect} className="btn-danger text-xs">Disconnect</button>
+            )}
           </div>
         )}
 
         {/* ═══════ HOME ═══════ */}
         {step === 'home' && (
           <div className="animate-slide-up space-y-6">
-            <div className="glass p-6 sm:p-8 text-center">
-              <h2 className="text-xl font-semibold mb-2">Quick & Simple</h2>
-              <p className="text-white/50 text-sm mb-6">One device generates a PIN. The other enters it. Files transfer directly — no server, no uploads.</p>
-
-              <div className="space-y-3">
-                <button onClick={startSender} className="btn-primary w-full flex items-center justify-center gap-2 text-base py-4">
-                  <I.Send /> Send — Generate PIN
-                </button>
-                <button onClick={() => { setStep('receiver'); setRole('receiver'); setInputPin(''); setError(''); }} className="btn-secondary w-full flex items-center justify-center gap-2 text-base py-4">
-                  <I.Download /> Receive — Enter PIN
-                </button>
-              </div>
+            <div className="glass p-6 text-center">
+              <h2 className="text-lg font-semibold mb-2">Quick & Simple</h2>
+              <p className="text-white/50 text-sm">One device generates a PIN. The other enters it. Files transfer directly — no server, no uploads.</p>
             </div>
 
-            <div className="glass p-5">
-              <h3 className="text-sm font-semibold text-white/80 mb-3 text-center">How it works</h3>
-              <div className="flex items-center gap-4 text-xs text-white/50">
+            <div className="space-y-3">
+              <button onClick={startSender} className="btn-primary w-full flex items-center justify-center gap-2 text-base py-4">
+                <I.Send /> Send — Generate PIN
+              </button>
+              <button onClick={() => { setStep('receiver'); setRole('receiver'); setInputPin(''); setError(''); }} className="btn-secondary w-full flex items-center justify-center gap-2 text-base py-4">
+                <I.Download /> Receive — Enter PIN
+              </button>
+            </div>
+
+            <div className="glass p-6">
+              <h3 className="text-sm font-semibold text-white/60 mb-4 text-center">How it works</h3>
+              <div className="flex items-center gap-2 text-xs text-white/50">
                 <div className="flex-1 text-center">
                   <div className="w-8 h-8 mx-auto mb-1 bg-blue-500/20 text-blue-400 rounded-full flex items-center justify-center font-bold">1</div>
                   Generate PIN
@@ -375,7 +426,7 @@ export default function App() {
               </div>
 
               <div className="mt-6">
-                <QRBox data={pin} label="Scan with other device" />
+                <QRBox data={qrUrl} label="Scan to connect instantly" />
               </div>
             </div>
 
@@ -418,7 +469,7 @@ export default function App() {
                 <div className="space-y-3">
                   {Object.entries(transfers).filter(([, t]) => t.status === 'sending' || t.status === 'receiving').map(([id, t]) => (
                     <div key={id}>
-                      <div className="flex justify-between text-xs text-white/60 mb-1"><span className="truncate mr-2">{t.name}</span><span className="shrink-0">{Math.round(t.progress)}%</span></div>
+                      <div className="flex justify-between text-xs text-white/60 mb-1"><span className="truncate mr-2">{t.name || 'Unknown file'}</span><span className="shrink-0">{Math.round(t.progress || 0)}%</span></div>
                       <PBar progress={t.progress} />
                     </div>
                   ))}
@@ -456,7 +507,7 @@ export default function App() {
                       <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${t.status === 'sent' || t.status === 'received' ? 'bg-green-500/20 text-green-400' : t.status === 'error' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
                         {t.status === 'sent' || t.status === 'received' ? <I.Check className="w-4 h-4" /> : t.status === 'error' ? <I.X className="w-4 h-4" /> : <I.Send className="w-4 h-4" />}
                       </div>
-                      <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{t.name}</p><p className="text-xs text-white/40">{fmtSize(t.size)}</p></div>
+                      <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{t.name || 'Unknown file'}</p><p className="text-xs text-white/40">{fmtSize(t.size)}</p></div>
                       {t.status === 'sent' || t.status === 'received' ? <PBar progress={t.progress} color="green" /> : t.status === 'sending' || t.status === 'receiving' ? <PBar progress={t.progress} /> : t.status === 'error' ? <span className="text-xs text-red-400">Failed</span> : null}
                     </div>
                   ))}</div>
@@ -483,8 +534,20 @@ export default function App() {
           </div>
         ) : null}
 
-        <footer className="text-center mt-12 pb-6"><p className="text-xs text-white/30">Files transfer directly via WebRTC • End-to-end encrypted</p></footer>
       </div>
+
+      {/* Footer */}
+      <footer className="relative z-10 text-center mt-8 pb-8 px-4">
+        <div className="space-y-2">
+          <p className="text-xs text-white/30">
+            <I.Shield className="inline w-3 h-3 mr-1" />
+            Files transfer directly via WebRTC • End-to-end encrypted
+          </p>
+          <p className="text-xs text-white/25">
+            &copy; {new Date().getFullYear()} FileSync. Made with <I.Heart className="inline w-3 h-3 text-red-400 mx-0.5" /> by <span className="text-white/40 font-medium">Saurabh Panchal</span>
+          </p>
+        </div>
+      </footer>
 
       <PWAInstallBanner prompt={installPrompt} onInstall={doInstall} onDismiss={() => setInstallPrompt(null)} />
     </div>
